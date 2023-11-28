@@ -1,4 +1,5 @@
 const User = require('./models/User.model');
+const Post = require('./models/Post.model');
 const express = require('express');
 const session = require('express-session');
 const passport = require('passport');
@@ -85,7 +86,7 @@ app.get('/logout', (req, res) => {
   });
 });
 
-app.get('/delete', async (req, res) => {
+app.get('/delete-users', async (req, res) => {
   try {
     await User.deleteMany();
     res.status(200).json({ msg: 'deleted' });
@@ -94,19 +95,65 @@ app.get('/delete', async (req, res) => {
   }
 });
 
+app.get('/delete-posts', async (req, res) => {
+  try {
+    await Post.deleteMany();
+    res.status(200).json({ msg: 'deleted' });
+  } catch (er) {
+    res.status(500).json({ error: er?.toString() });
+  }
+});
+
 app.get('/users', async (req, res) => {
   res.json({
-    users: await User.find(),
+    users: await User.find().populate('posts'),
   });
+});
+
+app.get('/posts', async (req, res) => {
+  res.json({
+    posts: await Post.find().populate('authorId'),
+  });
+});
+
+app.get('/create-post', isAuthenticated, (req, res) => {
+  res.render('create-post');
+});
+
+app.post('/create-post', isAuthenticated, async (req, res) => {
+  try {
+    const id = req.user[0]._id.toString();
+    const post = await Post.create({
+      authorId: id,
+      ...req.body,
+    });
+    const user = await User.findOne({ _id: id });
+    user.posts.push(post._id);
+    await user.save();
+    res.status(201).json({ post });
+  } catch (er) {
+    res.status(500).json({
+      err: er?.toString(),
+    });
+  }
 });
 
 app.post('/register', async (req, res) => {
   try {
     const user = await User.create(req.body);
     user.password = undefined;
-    res.status(201).json({
-      status: 'User created.',
-      user,
+    req.login(user, (err) => {
+      if (err) {
+        return res.status(201).json({
+          status: 'User created, but failed to login, Please login',
+          user,
+        });
+      } else {
+        return res.status(201).json({
+          status: 'User created',
+          user,
+        });
+      }
     });
   } catch (err) {
     console.log(err);
